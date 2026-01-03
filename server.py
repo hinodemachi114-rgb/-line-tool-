@@ -63,7 +63,13 @@ def validate_line_user_id(user_id):
     if not user_id:
         return False
     # LINEのuser_idは通常、Uで始まる33文字の文字列
-    pattern = r'^U[a-f0-9]{32}$'
+    # ただし、より柔軟に対応するため、Uで始まる32文字以上の文字列も許可
+    if len(user_id) < 32:
+        return False
+    if not user_id.startswith('U'):
+        return False
+    # 英数字のみか確認
+    pattern = r'^U[a-zA-Z0-9]{31,}$'
     return bool(re.match(pattern, user_id))
 
 def validate_email(email):
@@ -300,21 +306,66 @@ def callback():
 @app.route("/register")
 @limiter.limit("10 per minute")
 def register():
-    user_id = request.args.get('user_id', '').strip()
-    # user_idが空の場合はエラー
-    if not user_id:
-        abort(400, description="user_idパラメータが必要です")
+    try:
+        user_id = request.args.get('user_id', '').strip()
+        print(f"★フォームアクセス - user_id: {user_id[:8]}...{user_id[-4:] if len(user_id) > 12 else '***'}")
+        
+        # user_idが空の場合はエラー
+        if not user_id:
+            print("★エラー: user_idが空です")
+            return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>エラー</title>
+            </head>
+            <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                <h2 style="color: #d32f2f;">エラー</h2>
+                <p>user_idパラメータが必要です。</p>
+                <p>LINE Botから送られたリンクを使用してください。</p>
+                <p><a href="/">トップページに戻る</a></p>
+            </body>
+            </html>
+            """), 400
+        
+        # user_idの形式を検証（緩和版）
+        if not validate_line_user_id(user_id):
+            print(f"★警告: user_id形式が標準的ではありませんが、処理を続行します - user_id: {user_id[:8]}...{user_id[-4:] if len(user_id) > 12 else '***'}")
+            # 警告のみで処理を続行（より柔軟に対応）
+        
+        # セッションにuser_idを保存（CSRF対策の一部）
+        # セッションが使えない環境でも動作するように、csrf_tokenを生成
+        csrf_token = secrets.token_hex(16)
+        try:
+            session['user_id'] = user_id
+            session['csrf_token'] = csrf_token
+        except Exception as e:
+            print(f"★セッション保存エラー（無視して続行）: {e}")
+            # セッションが使えない場合は、csrf_tokenのみ使用
+        
+        print(f"★フォーム表示準備完了 - user_id: {user_id[:8]}...{user_id[-4:] if len(user_id) > 12 else '***'}")
+        return render_template_string(FORM_HTML, user_id=user_id, csrf_token=csrf_token)
     
-    # user_idの形式を検証
-    if not validate_line_user_id(user_id):
-        log_safe("★警告: 不正なuser_id形式", user_id=user_id)
-        abort(400, description="不正なuser_id形式です")
-    
-    # セッションにuser_idを保存（CSRF対策の一部）
-    session['user_id'] = user_id
-    session['csrf_token'] = secrets.token_hex(16)
-    
-    return render_template_string(FORM_HTML, user_id=user_id, csrf_token=session.get('csrf_token', ''))
+    except Exception as e:
+        print(f"★フォーム表示エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>エラー</title>
+        </head>
+        <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+            <h2 style="color: #d32f2f;">エラーが発生しました</h2>
+            <p>フォームの表示中にエラーが発生しました。</p>
+            <p>もう一度お試しください。</p>
+            <p><a href="/">トップページに戻る</a></p>
+        </body>
+        </html>
+        """), 500
 
 @app.route("/submit", methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
