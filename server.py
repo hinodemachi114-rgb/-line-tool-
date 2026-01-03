@@ -40,6 +40,7 @@ line_bot_api = LineBotApi(YOUR_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(YOUR_CHANNEL_SECRET)
 
 CSV_FILE = 'members.csv'
+EVENTS_FILE = 'events.csv'
 BACKUP_DIR = 'backups'
 MAX_BACKUPS = 30  # 最大30個のバックアップを保持
 
@@ -261,6 +262,12 @@ def init_csv():
     if not os.path.exists(CSV_FILE):
         df = pd.DataFrame(columns=['id', '氏名(漢字)', '氏名(ふりがな)', 'メールアドレス', '連絡先', '電話番号', '支部', '会員情報', '配信希望情報', '勤務先・大学名'])
         df.to_csv(CSV_FILE, index=False, encoding='utf-8-sig')
+
+def init_events_csv():
+    """イベント情報のCSVファイルを初期化"""
+    if not os.path.exists(EVENTS_FILE):
+        df = pd.DataFrame(columns=['id', 'イベント名', '日時', '場所', '詳細URL', '説明', '作成日時'])
+        df.to_csv(EVENTS_FILE, index=False, encoding='utf-8-sig')
 
 @app.route("/callback", methods=['GET', 'POST'])
 def callback():
@@ -542,6 +549,273 @@ def submit():
         </body>
         </html>
         """.replace('{user_id}', user_id_for_error))
+
+@app.route("/profile")
+@limiter.limit("10 per minute")
+def profile():
+    """会員情報確認ページ"""
+    try:
+        user_id = request.args.get('user_id', '').strip()
+        
+        if not user_id:
+            return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>エラー</title>
+            </head>
+            <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                <h2 style="color: #d32f2f;">エラー</h2>
+                <p>user_idパラメータが必要です。</p>
+                <p><a href="/">トップページに戻る</a></p>
+            </body>
+            </html>
+            """), 400
+        
+        # CSVから会員情報を取得
+        if not os.path.exists(CSV_FILE):
+            return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>会員情報確認</title>
+            </head>
+            <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                <h2>会員情報確認</h2>
+                <p>会員情報が見つかりませんでした。</p>
+                <p><a href="/register?user_id={user_id}">会員登録を行う</a></p>
+            </body>
+            </html>
+            """.replace('{user_id}', user_id))
+        
+        df = pd.read_csv(CSV_FILE, encoding='utf-8-sig')
+        member_data = df[df['id'] == user_id]
+        
+        if len(member_data) == 0:
+            return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>会員情報確認</title>
+            </head>
+            <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                <h2>会員情報確認</h2>
+                <p>会員情報が見つかりませんでした。</p>
+                <p><a href="/register?user_id={user_id}">会員登録を行う</a></p>
+            </body>
+            </html>
+            """.replace('{user_id}', user_id))
+        
+        member = member_data.iloc[0]
+        
+        # 会員情報を表示
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>会員情報確認</title>
+            <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+            <style>
+                body {{ padding: 20px; background-color: #f8f9fa; }}
+                .container {{ max-width: 600px; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+                h2 {{ text-align: center; color: #00B900; margin-bottom: 30px; }}
+                .info-row {{ padding: 15px; border-bottom: 1px solid #eee; }}
+                .info-label {{ font-weight: bold; color: #666; }}
+                .info-value {{ color: #333; }}
+                .btn-primary {{ background-color: #00B900; border-color: #00B900; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>会員情報確認</h2>
+                <div class="info-row">
+                    <div class="info-label">氏名（漢字）</div>
+                    <div class="info-value">{html.escape(str(member.get('氏名(漢字)', '')))}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">氏名（ふりがな）</div>
+                    <div class="info-value">{html.escape(str(member.get('氏名(ふりがな)', '')))}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">メールアドレス</div>
+                    <div class="info-value">{html.escape(str(member.get('メールアドレス', '')))}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">電話番号</div>
+                    <div class="info-value">{html.escape(str(member.get('電話番号', '')))}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">所属支部</div>
+                    <div class="info-value">{html.escape(str(member.get('支部', '')))}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">会員情報</div>
+                    <div class="info-value">{html.escape(str(member.get('会員情報', '')))}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">配信希望情報</div>
+                    <div class="info-value">{html.escape(str(member.get('配信希望情報', '')))}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">勤務先・大学名</div>
+                    <div class="info-value">{html.escape(str(member.get('勤務先・大学名', '')))}</div>
+                </div>
+                <div style="margin-top: 30px; text-align: center;">
+                    <a href="/register?user_id={user_id}" class="btn btn-primary">登録情報を変更する</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html_content
+    
+    except Exception as e:
+        print(f"★会員情報確認エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>エラー</title>
+        </head>
+        <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+            <h2 style="color: #d32f2f;">エラーが発生しました</h2>
+            <p>会員情報の取得中にエラーが発生しました。</p>
+            <p><a href="/">トップページに戻る</a></p>
+        </body>
+        </html>
+        """), 500
+
+@app.route("/events")
+@limiter.limit("10 per minute")
+def events():
+    """イベント・研修会一覧ページ"""
+    try:
+        user_id = request.args.get('user_id', '').strip()
+        
+        if not user_id:
+            return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>エラー</title>
+            </head>
+            <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                <h2 style="color: #d32f2f;">エラー</h2>
+                <p>user_idパラメータが必要です。</p>
+                <p><a href="/">トップページに戻る</a></p>
+            </body>
+            </html>
+            """), 400
+        
+        init_events_csv()
+        
+        # イベント情報を読み込み
+        if not os.path.exists(EVENTS_FILE):
+            return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>イベント一覧</title>
+            </head>
+            <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                <h2>イベント・研修会一覧</h2>
+                <p>現在、申し込み中のイベント・研修会はありません。</p>
+                <p><a href="/profile?user_id={user_id}">会員情報に戻る</a></p>
+            </body>
+            </html>
+            """.replace('{user_id}', user_id))
+        
+        df_events = pd.read_csv(EVENTS_FILE, encoding='utf-8-sig')
+        
+        # ユーザーが申し込んでいるイベントを取得（将来的に実装）
+        # 現在はすべてのイベントを表示
+        events_list = df_events.to_dict('records')
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>イベント・研修会一覧</title>
+            <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+            <style>
+                body {{ padding: 20px; background-color: #f8f9fa; }}
+                .container {{ max-width: 800px; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+                h2 {{ text-align: center; color: #00B900; margin-bottom: 30px; }}
+                .event-card {{ padding: 20px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; }}
+                .event-title {{ font-size: 18px; font-weight: bold; color: #333; margin-bottom: 10px; }}
+                .event-info {{ color: #666; margin-bottom: 5px; }}
+                .btn-link {{ color: #00B900; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>イベント・研修会一覧</h2>
+        """
+        
+        if len(events_list) == 0:
+            html_content += """
+                <p style="text-align: center; color: #666;">現在、申し込み中のイベント・研修会はありません。</p>
+            """
+        else:
+            for event in events_list:
+                event_name = html.escape(str(event.get('イベント名', '')))
+                event_date = html.escape(str(event.get('日時', '')))
+                event_location = html.escape(str(event.get('場所', '')))
+                event_url = html.escape(str(event.get('詳細URL', '')))
+                event_desc = html.escape(str(event.get('説明', '')))
+                
+                html_content += f"""
+                <div class="event-card">
+                    <div class="event-title">{event_name}</div>
+                    <div class="event-info">📅 日時: {event_date}</div>
+                    <div class="event-info">📍 場所: {event_location}</div>
+                    {f'<div class="event-info">{event_desc}</div>' if event_desc else ''}
+                    {f'<a href="{event_url}" target="_blank" class="btn-link">詳細を見る →</a>' if event_url else ''}
+                </div>
+                """
+        
+        html_content += f"""
+                <div style="margin-top: 30px; text-align: center;">
+                    <a href="/profile?user_id={user_id}" class="btn btn-secondary">会員情報に戻る</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html_content
+    
+    except Exception as e:
+        print(f"★イベント一覧エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>エラー</title>
+        </head>
+        <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+            <h2 style="color: #d32f2f;">エラーが発生しました</h2>
+            <p>イベント一覧の取得中にエラーが発生しました。</p>
+            <p><a href="/">トップページに戻る</a></p>
+        </body>
+        </html>
+        """), 500
 
 @app.route("/")
 def index():
