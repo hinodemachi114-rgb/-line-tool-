@@ -256,8 +256,13 @@ def init_csv():
         df = pd.DataFrame(columns=['id', '氏名(漢字)', '氏名(ふりがな)', 'メールアドレス', '連絡先', '電話番号', '支部', '会員情報', '配信希望情報', '勤務先・大学名'])
         df.to_csv(CSV_FILE, index=False, encoding='utf-8-sig')
 
-@app.route("/callback", methods=['POST'])
+@app.route("/callback", methods=['GET', 'POST'])
 def callback():
+    # GETリクエストの場合は200を返す（LINEの検証用）
+    if request.method == 'GET':
+        return 'OK', 200
+    
+    # POSTリクエストの処理
     # リクエストの詳細をログ出力
     print("=" * 60)
     print("★Webhook受信")
