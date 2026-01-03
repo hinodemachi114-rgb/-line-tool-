@@ -1,0 +1,6 @@
+pandas
+streamlit
+line-bot-sdk
+flask
+flask-limiter
+
