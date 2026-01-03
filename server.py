@@ -545,7 +545,45 @@ def submit():
 
 @app.route("/")
 def index():
-    return FORM_HTML
+    """ルートパス - ヘルスチェック用"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>LINE Bot 会員登録システム</title>
+    </head>
+    <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+        <h1>LINE Bot 会員登録システム</h1>
+        <p>このシステムは正常に動作しています。</p>
+        <p>LINE Botから送られたリンクを使用して会員登録を行ってください。</p>
+        <hr>
+        <p><small>Status: OK | BASE_URL: """ + BASE_URL + """</small></p>
+    </body>
+    </html>
+    """, 200
+
+@app.errorhandler(404)
+def not_found(error):
+    """404エラーハンドラー"""
+    print(f"★404エラー: {request.url}")
+    print(f"★リクエストパス: {request.path}")
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>404 Not Found</title>
+    </head>
+    <body style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+        <h2 style="color: #d32f2f;">404 Not Found</h2>
+        <p>リクエストされたページが見つかりませんでした。</p>
+        <p>リクエストパス: """ + request.path + """</p>
+        <p>BASE_URL: """ + BASE_URL + """</p>
+        <p><a href="/">トップページに戻る</a></p>
+    </body>
+    </html>
+    """), 404
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
